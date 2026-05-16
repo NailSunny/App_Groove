@@ -2,6 +2,7 @@ import 'package:groove_app/api_DTOs/login_dto.dart';
 import 'package:groove_app/api_DTOs/register_dto.dart';
 import 'package:groove_app/config/api_config.dart';import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<String> registerUser(RegisterDto user) async {
   final response = await http.post(
@@ -41,7 +42,12 @@ Future<String> loginUser(LoginDto user) async {
   );
 
   if (response.statusCode == 200) {
-    return response.body; // допустим, это токен или текст вроде LoggedIn_1
+    final token = response.body;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('jwt_token', token);
+
+    return "Успешный вход";
   } else if (response.statusCode == 401) {
     return "Неверный логин или пароль";
   } else {

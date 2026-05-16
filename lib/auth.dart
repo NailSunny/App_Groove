@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:groove_app/api_DTOs/login_dto.dart';
 import 'package:groove_app/api_service/api_requests.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -23,25 +22,23 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   void _submit() async {
-    if (_formKey.currentState!.validate()) {
-      final user = LoginDto(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+  if (_formKey.currentState!.validate()) {
+    final user = LoginDto(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+    );
 
-      final result = await loginUser(user);
-      if (result.startsWith("LoggedIn_")) {
-        final id = int.parse(result.split('_')[1]);
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('userId', id);
-        Navigator.popAndPushNamed(context, '/home');
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(result)));
-      }
+    final result = await loginUser(user);
+
+    if (result == "Успешный вход") {
+      Navigator.popAndPushNamed(context, '/home');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result)),
+      );
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {

@@ -3,6 +3,7 @@ import 'package:groove_app/api_service/cart_provider.dart';
 import 'package:groove_app/arenda.dart';
 import 'package:groove_app/auth.dart';
 import 'package:groove_app/basket_shop.dart';
+import 'package:groove_app/features/admin/screens/admin_home.dart';
 import 'package:groove_app/home.dart';
 import 'package:groove_app/myabonements.dart';
 import 'package:groove_app/myarendalist.dart';
@@ -63,24 +64,25 @@ class AppTheme extends StatelessWidget {
           ),
         ),
       ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => AuthPage(),
-        '/reg': (context) => RegPage(),
-        '/rec': (context) => RecoveryPage(),
-        '/rec2': (context) => Recovery2Page(),
-        '/home': (context) => HomePage(),
-        '/profile': (context) => ProfilePage(),
-        '/trainerlist': (context) => TrainerlistPage(),
-        '/schedule': (context) => SchedulePage(),
-        '/shop': (context) => ShopPage(),
-        '/basket': (context) => BasketShopPage(),
-        '/abonements': (context) => AbonementsPage(),
-        '/purchase': (context) => PurchasePage(),
-        '/arenda': (context) => ArendaPage(),
-        '/myarendalist': (context) => MyarendalistPage(),
-        '/myjournal': (context) => MyjournalPage(),
-      },
+      home: AdminHomePage(),
+      // initialRoute: '/',
+      // routes: {
+      //   '/': (context) => AuthPage(),
+      //   '/reg': (context) => RegPage(),
+      //   '/rec': (context) => RecoveryPage(),
+      //   '/rec2': (context) => Recovery2Page(),
+      //   '/home': (context) => HomePage(),
+      //   '/profile': (context) => ProfilePage(),
+      //   '/trainerlist': (context) => TrainerlistPage(),
+      //   '/schedule': (context) => SchedulePage(),
+      //   '/shop': (context) => ShopPage(),
+      //   '/basket': (context) => BasketShopPage(),
+      //   '/abonements': (context) => AbonementsPage(),
+      //   '/purchase': (context) => PurchasePage(),
+      //   '/arenda': (context) => ArendaPage(),
+      //   '/myarendalist': (context) => MyarendalistPage(),
+      //   '/myjournal': (context) => MyjournalPage(),
+      // },
     );
   }
 }
