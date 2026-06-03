@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "mobile (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main_mobile.dart",
+      "args": ["--flavor", "mobile"]
+    },
+    {
+      "name": "admin Windows (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main_admin.dart",
+      "args": ["--flavor", "admin"],
+      "deviceId": "windows"
+    },
+    {
+      "name": "admin macOS (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main_admin.dart",
+      "args": ["--flavor", "admin"],
+      "deviceId": "macos"
+    },
+    {
+      "name": "admin Linux (debug)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main_admin.dart",
+      "args": ["--flavor", "admin"],
+      "deviceId": "linux"
+    }
+  ]
+}

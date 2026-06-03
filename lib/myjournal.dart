@@ -104,81 +104,104 @@ class _MyjournalPageState extends State<MyjournalPage> {
                       ) &&
                       r.start.isBefore(endOfWeek.add(const Duration(days: 1))),
                 )
-                .toList();
+                .toList()
+              ..sort((a, b) => b.start.compareTo(a.start));
       });
     } else {
       throw Exception('Ошибка при получении данных');
     }
   }
 
-  Future<void> _cancelRegistry(int id) async {
+  Future<void> _cancelRegistry(RegistryRecord record) async {
     if (userId == null) return;
 
-    final response = await http.delete(
-      Uri.parse('${ApiConfig.baseUrl}/api/registry/$id/cancel?userId=$userId'),
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Отменить запись?', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+        content: Text(
+          'Запись на ${record.classType.toLowerCase()} занятие будет отменена, занятие вернётся в абонемент.',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Нет')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Отменить', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
     );
+    if (ok != true || !mounted) return;
+
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/api/registry/${record.id}/cancel?userId=$userId'),
+    );
+    if (!mounted) return;
+
     if (response.statusCode == 200) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Запись отменена")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Запись отменена')),
+      );
       _fetchRegistry();
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Нельзя отменить занятие")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось отменить запись')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'ЖУРНАЛ ЗАПИСЕЙ',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
-        backgroundColor: Colors.black,
-        leading: const BackButton(color: Colors.white),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        leading: BackButton(color: Theme.of(context).colorScheme.onSurface),
       ),
       body:
           userId == null
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16),
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
                         onPressed: _previousWeek,
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.arrow_back_ios,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       Text(
                         _formatWeekRange(_currentWeek),
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontSize: 16,
                         ),
                       ),
                       IconButton(
                         onPressed: _nextWeek,
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.arrow_forward_ios,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  SizedBox(height: 20),
                   if (_records.isEmpty)
-                    const Center(
+                    Center(
                       child: Text(
                         'Нет записей на этой неделе',
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                       ),
                     ),
                   ..._records.map((r) => _buildRecordContainer(r)).toList(),
@@ -187,13 +210,18 @@ class _MyjournalPageState extends State<MyjournalPage> {
     );
   }
 
+  bool _canCancelRegistry(RegistryRecord record) {
+    if (record.classType != 'Групповое') return false;
+    return DateTime.now().isBefore(record.start);
+  }
+
   Widget _buildRecordContainer(RegistryRecord record) {
     final dateFormat = DateFormat('dd MMMM yyyy HH:mm', 'ru');
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey),
       ),
@@ -202,36 +230,36 @@ class _MyjournalPageState extends State<MyjournalPage> {
         children: [
           Text(
             '${dateFormat.format(record.start)} - ${DateFormat('HH:mm').format(record.end)}, ${record.duration} мин',
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             'Зал №${record.hall}',
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             record.classType,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             'Абонемент: ${record.abonementName}',
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           ),
-          const SizedBox(height: 8),
-          if (record.status == 'Предстоящее')
+          SizedBox(height: 8),
+          if (_canCancelRegistry(record))
             ElevatedButton(
-              onPressed: () => _cancelRegistry(record.id),
+              onPressed: () => _cancelRegistry(record),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.purpleAccent,
               ),
-              child: const Text(
+              child: Text(
                 'ОТМЕНИТЬ',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               ),
             ),
         ],

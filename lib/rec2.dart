@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:groove_app/widgets/groove_logo.dart';
 import 'package:groove_app/config/api_config.dart';
+import 'package:groove_app/client_routes.dart';
 import 'package:http/http.dart' as http;
 
 class Recovery2Page extends StatefulWidget {
@@ -58,7 +60,7 @@ class _Recovery2PageState extends State<Recovery2Page> {
       // Показать уведомление после перехода
       Navigator.pushNamedAndRemoveUntil(
         context,
-        '/', // Или '/', если это ваш экран входа
+        ClientRoutes.auth,
         (route) => false,
       );
 
@@ -85,9 +87,9 @@ class _Recovery2PageState extends State<Recovery2Page> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
           onPressed: () {
-            Navigator.popAndPushNamed(context, '/');
+            Navigator.popAndPushNamed(context, ClientRoutes.auth);
           },
         ),
       ),
@@ -95,8 +97,7 @@ class _Recovery2PageState extends State<Recovery2Page> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset(
-              "images/Logo_Groove.png",
+            GrooveLogo(
               // height: MediaQuery.of(context).size.height * 0.2,
               width: MediaQuery.of(context).size.width * 0.7,
             ),
@@ -105,10 +106,10 @@ class _Recovery2PageState extends State<Recovery2Page> {
               width: MediaQuery.of(context).size.width * 0.85,
               child: TextFormField(
                 controller: passwordController,
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 validator:
                     (value) => value!.length < 6 ? "Мин. 6 символов" : null,
-                cursorColor: Colors.white,
+                cursorColor: Theme.of(context).colorScheme.onSurface,
                 decoration: InputDecoration(
                   labelText: 'Пароль',
                   labelStyle: TextStyle(color: Colors.grey),
@@ -131,8 +132,8 @@ class _Recovery2PageState extends State<Recovery2Page> {
               width: MediaQuery.of(context).size.width * 0.85,
               child: TextField(
                 controller: repeatPasswordController,
-                style: TextStyle(color: Colors.white),
-                cursorColor: Colors.white,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                cursorColor: Theme.of(context).colorScheme.onSurface,
                 decoration: InputDecoration(
                   labelText: 'Повторите пароль',
                   labelStyle: TextStyle(color: Colors.grey),

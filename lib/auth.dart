@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:groove_app/widgets/groove_logo.dart';
 import 'package:groove_app/api_DTOs/login_dto.dart';
 import 'package:groove_app/api_service/api_requests.dart';
+import 'package:groove_app/api_service/mobile_auth_api.dart';
+import 'package:groove_app/helper/mobile_auth_navigation.dart';
+import 'package:groove_app/routes/mobile_routes.dart';
+import 'package:groove_app/widgets/theme_mode_switch.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -13,6 +18,30 @@ class _AuthPageState extends State<AuthPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _checkingSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tryAutoLogin();
+  }
+
+  /// Автовход: тренер → TrainerShell, клиент → HomePage (как в .cursorrules).
+  Future<void> _tryAutoLogin() async {
+    if (await hasTrainerSession()) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(MobileRoutes.trainer);
+      return;
+    }
+
+    if (await hasClientSession()) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(MobileRoutes.home);
+      return;
+    }
+
+    if (mounted) setState(() => _checkingSession = false);
+  }
 
   @override
   void dispose() {
@@ -22,50 +51,59 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   void _submit() async {
-  if (_formKey.currentState!.validate()) {
-    final user = LoginDto(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
-
-    final result = await loginUser(user);
-
-    if (result == "Успешный вход") {
-      Navigator.popAndPushNamed(context, '/home');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result)),
+    if (_formKey.currentState!.validate()) {
+      final user = LoginDto(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
       );
+
+      final result = await loginUser(user);
+
+      if (!mounted) return;
+      if (result == "Успешный вход") {
+        await navigateAfterMobileLogin(context);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result)));
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFAD03E2)),
+        ),
+      );
+    }
+
     return Scaffold(
-      body: Center(
+      body: Stack(
+        children: [
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 16,
+            child: ThemeModeSwitch(showLabel: false),
+          ),
+          Center(
         child: Form(
           key: _formKey,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                "images/Logo_Groove.png",
-                height: MediaQuery.of(context).size.height * 0.2,
-                width: MediaQuery.of(context).size.width * 0.7,
+              GrooveLogo(
+                height: MediaQuery.of(context).size.height * 0.15,
               ),
-              SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-              SizedBox(
+              SizedBox(height: MediaQuery.of(context).size.height * 0.03),
+              Container(
                 width: MediaQuery.of(context).size.width * 0.85,
                 child: TextFormField(
                   controller: _emailController,
-                  validator:
-                      (value) =>
-                          value != null && value.contains("@")
-                              ? null
-                              : "Введите email",
-                  style: TextStyle(color: Colors.white),
-                  cursorColor: Colors.white,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                   decoration: InputDecoration(
                     labelText: 'Email',
                     labelStyle: TextStyle(color: Colors.grey),
@@ -81,21 +119,21 @@ class _AuthPageState extends State<AuthPage> {
                       borderSide: BorderSide.none,
                     ),
                   ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Введите email';
+                    }
+                    return null;
+                  },
                 ),
               ),
-              SizedBox(height: MediaQuery.of(context).size.height * 0.015),
-              SizedBox(
+              SizedBox(height: MediaQuery.of(context).size.height * 0.02),
+              Container(
                 width: MediaQuery.of(context).size.width * 0.85,
                 child: TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  validator:
-                      (value) =>
-                          value != null && value.length >= 6
-                              ? null
-                              : "Мин. 6 символов",
-                  style: TextStyle(color: Colors.white),
-                  cursorColor: Colors.white,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                   decoration: InputDecoration(
                     labelText: 'Пароль',
                     labelStyle: TextStyle(color: Colors.grey),
@@ -118,7 +156,7 @@ class _AuthPageState extends State<AuthPage> {
                 alignment: Alignment.centerRight,
                 child: InkWell(
                   onTap: () {
-                    Navigator.popAndPushNamed(context, '/rec');
+                    Navigator.pushNamed(context, MobileRoutes.recovery);
                   },
                   child: Text(
                     "Забыли пароль?",
@@ -127,7 +165,6 @@ class _AuthPageState extends State<AuthPage> {
                 ),
               ),
               SizedBox(height: MediaQuery.of(context).size.height * 0.02),
-
               Container(
                 height: MediaQuery.of(context).size.height * 0.06,
                 width: MediaQuery.of(context).size.width * 0.55,
@@ -142,7 +179,6 @@ class _AuthPageState extends State<AuthPage> {
                 ),
                 child: ElevatedButton(onPressed: _submit, child: Text("Войти")),
               ),
-
               SizedBox(height: MediaQuery.of(context).size.height * 0.02),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -172,7 +208,7 @@ class _AuthPageState extends State<AuthPage> {
                 width: MediaQuery.of(context).size.width * 0.55,
                 child: OutlinedButton(
                   onPressed: () {
-                    Navigator.popAndPushNamed(context, '/reg');
+                    Navigator.pushNamed(context, MobileRoutes.reg);
                   },
                   child: ShaderMask(
                     shaderCallback: (Rect bounds) {
@@ -182,7 +218,7 @@ class _AuthPageState extends State<AuthPage> {
                     },
                     child: Text(
                       "Регистрация",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                     ),
                   ),
                 ),
@@ -190,6 +226,8 @@ class _AuthPageState extends State<AuthPage> {
             ],
           ),
         ),
+          ),
+        ],
       ),
     );
   }

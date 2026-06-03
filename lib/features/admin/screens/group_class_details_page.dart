@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:groove_app/app/groove_theme_extension.dart';
+import 'package:groove_app/api_service/admin_schedule_api.dart';
+import 'package:groove_app/designs/colors.dart';
+import 'package:groove_app/features/admin/widgets/admin_scrollable_table.dart';
+import 'package:groove_app/features/admin/widgets/admin_ui_helpers.dart';
+import 'package:groove_app/features/admin/widgets/attendance_toggle.dart';
 
 class GroupClassDetailsPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -16,364 +22,145 @@ class GroupClassDetailsPage extends StatefulWidget {
 
 class _GroupClassDetailsPageState extends State<GroupClassDetailsPage> {
   final TextEditingController _searchController = TextEditingController();
+  List<Map<String, dynamic>> _clients = [];
+  bool _loading = true;
+  String _search = '';
 
-  late List<Map<String, dynamic>> clients;
-
-  String search = "";
+  int get _groupClassId => widget.classData['id'] as int? ?? widget.classData['Id'] as int;
 
   @override
   void initState() {
     super.initState();
+    _load();
+  }
 
-    clients = [
-      {
-        "id": 1,
-        "client": "Иванов И.И.",
-        "date": "20.04.2026",
-        "subscription": "Безлимит",
-        "visited": false,
-      },
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
-      {
-        "id": 2,
-        "client": "Петров А.В.",
-        "date": "19.04.2026",
-        "subscription": "Разовое",
-        "visited": true,
-      },
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final list = await fetchGroupRegistrations(_groupClassId);
+      if (mounted) setState(() { _clients = list; _loading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        showAdminError(context, e);
+      }
+    }
+  }
 
-      {
-        "id": 3,
-        "client": "Сидоров Д.К.",
-        "date": "18.04.2026",
-        "subscription": "Стандарт x8",
-        "visited": false,
-      },
+  Future<void> _markPresent(int registryId) async {
+    try {
+      await markGroupAttendance(registryId, 'Present');
+      await _load();
+    } catch (e) {
+      if (mounted) showAdminError(context, e);
+    }
+  }
 
-      {
-        "id": 4,
-        "client": "Кузнецова Е.С.",
-        "date": "17.04.2026",
-        "subscription": "VIP",
-        "visited": false,
-      },
-
-      {
-        "id": 5,
-        "client": "Смирнов А.Н.",
-        "date": "16.04.2026",
-        "subscription": "Безлимит",
-        "visited": false,
-      },
-
-      {
-        "id": 6,
-        "client": "Васильева М.П.",
-        "date": "15.04.2026",
-        "subscription": "Стандарт x12",
-        "visited": true,
-      },
-    ];
+  List<Map<String, dynamic>> get _filtered {
+    if (_search.isEmpty) return _clients;
+    final q = _search.toLowerCase();
+    return _clients.where((c) {
+      final name = (c['client'] ?? c['Client'] ?? '').toString().toLowerCase();
+      return name.contains(q);
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered =
-        clients.where((item) {
-          final client = item["client"].toString().toLowerCase();
-
-          return client.contains(search.toLowerCase());
-        }).toList();
+    final direction = widget.classData['direction'] ?? widget.classData['Direction'] ?? '';
+    final time = widget.classData['time'] ?? widget.classData['Time'] ?? '';
+    final hall = widget.classData['hall'] ?? widget.classData['Hall'] ?? '';
 
     return SizedBox.expand(
       child: Container(
         color: const Color(0xFF151515),
-
-
         child: Padding(
-          padding: const EdgeInsets.all(30),
-
+          padding: EdgeInsets.all(30),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-
             children: [
-              /// ВЕРХНЯЯ ПАНЕЛЬ
               Row(
                 children: [
-                  /// НАЗАД
                   IconButton(
                     onPressed: widget.onBack,
-
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
                   ),
-
-                  const SizedBox(width: 20),
-
-                  /// ИНФОРМАЦИЯ О ЗАНЯТИИ
+                  SizedBox(width: 20),
                   Expanded(
                     child: Text(
-                      "${widget.classData["direction"]} • "
-                      "${widget.classData["time"]} • "
-                      "Зал ${widget.classData["hall"]}",
-
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-
+                      '$direction • $time • Зал $hall',
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 22, fontWeight: FontWeight.bold),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-
-                  /// ПОИСК
                   SizedBox(
                     width: 350,
-
                     child: TextField(
                       controller: _searchController,
-
-                      onChanged: (value) {
-                        setState(() {
-                          search = value;
-                        });
-                      },
-
-                      style: const TextStyle(color: Colors.white),
-
+                      onChanged: (v) => setState(() => _search = v),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                       decoration: InputDecoration(
-                        hintText: "Поиск клиента",
-
-                        hintStyle: const TextStyle(color: Colors.white54),
-
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: Colors.white54,
-                        ),
-
+                        hintText: 'Поиск клиента',
+                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54)),
+                        prefixIcon: Icon(Icons.search, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54)),
                         filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
-
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                        ),
-
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-
-                          borderSide: BorderSide.none,
-                        ),
+                        fillColor: Theme.of(context).cardColor,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                       ),
                     ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 30),
-
-              /// ТАБЛИЦА
+              SizedBox(height: 30),
               Expanded(
                 child: Container(
-                  width: double.infinity,
-
-                  padding: const EdgeInsets.all(20),
-
+                  padding: EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-
+                    color: context.groove.headerBackground,
                     borderRadius: BorderRadius.circular(20),
                   ),
-
-                  child: Scrollbar(
-                    thumbVisibility: true,
-
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-
-                        child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(
-                            const Color(0xFF2A2A2A),
-                          ),
-
-                          horizontalMargin: 20,
-                          columnSpacing: 40,
-
-                          dataRowMinHeight: 65,
-                          dataRowMaxHeight: 65,
-
-                          columns: const [
-                            DataColumn(
-                              label: Text(
-                                "№",
-
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-
-                            DataColumn(
-                              label: Text(
-                                "ФИО",
-
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-
-                            DataColumn(
-                              label: Text(
-                                "Дата записи",
-
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-
-                            DataColumn(
-                              label: Text(
-                                "Абонемент",
-
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-
-                            DataColumn(
-                              label: Text(
-                                "Посещение",
-
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
+                  child: _loading
+                      ? Center(child: CircularProgressIndicator(color: MainPurple))
+                      : AdminScrollableTable(
+                          minWidth: 800,
+                          columns: [
+                            DataColumn(label: Text('№', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('ФИО', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('Дата записи', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('Абонемент', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold))),
+                            DataColumn(label: Text('Посещение', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold))),
                           ],
-
-                          rows:
-                              filtered.map((item) {
-                                final visited = item["visited"] as bool;
-
-                                return DataRow(
-                                  cells: [
-                                    /// №
-                                    DataCell(
-                                      Text(
-                                        item["id"].toString(),
-
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-
-                                    /// ФИО
-                                    DataCell(
-                                      SizedBox(
-                                        width: 180,
-
-                                        child: Text(
-                                          item["client"].toString(),
-
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                          ),
-
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-
-                                    /// ДАТА
-                                    DataCell(
-                                      Text(
-                                        item["date"].toString(),
-
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-
-                                    /// АБОНЕМЕНТ
-                                    DataCell(
-                                      Text(
-                                        item["subscription"].toString(),
-
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-
-                                    /// ПОСЕЩЕНИЕ
-                                    DataCell(
-                                      GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            item["visited"] = true;
-                                          });
-                                        },
-
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 200,
-                                          ),
-
-                                          width: 38,
-                                          height: 38,
-
-                                          decoration: BoxDecoration(
-                                            color:
-                                                visited
-                                                    ? Colors.transparent
-                                                    : Colors.green,
-
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-
-                                            border:
-                                                visited
-                                                    ? Border.all(
-                                                      color: Colors.green,
-
-                                                      width: 2,
-                                                    )
-                                                    : null,
-                                          ),
-
-                                          child: Icon(
-                                            Icons.check,
-
-                                            color:
-                                                visited
-                                                    ? Colors.green
-                                                    : Colors.white,
-
-                                            size: 20,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
+                          rows: _filtered.asMap().entries.map((entry) {
+                            final item = entry.value;
+                            final registryId = item['registryId'] as int? ?? item['RegistryId'] as int;
+                            final attendance = (item['attendance'] ?? item['Attendance'] ?? 'Pending').toString();
+                            return DataRow(cells: [
+                              DataCell(Text('${entry.key + 1}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface))),
+                              DataCell(Text(
+                                (item['client'] ?? item['Client'] ?? '').toString(),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                              )),
+                              DataCell(Text(
+                                (item['registryDate'] ?? item['RegistryDate'] ?? '').toString(),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                              )),
+                              DataCell(Text(
+                                (item['subscription'] ?? item['Subscription'] ?? '').toString(),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                              )),
+                              DataCell(AttendanceToggle(
+                                attendance: attendance,
+                                onMarkPresent: attendance == 'Pending' ? () => _markPresent(registryId) : null,
+                              )),
+                            ]);
+                          }).toList(),
                         ),
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ],

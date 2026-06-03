@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:groove_app/client_routes.dart';
+import 'package:groove_app/api_DTOs/addcart_dto.dart';
 import 'package:groove_app/api_DTOs/cart_dto.dart';
 import 'package:groove_app/api_DTOs/confirm_purchase_dto.dart';
 import 'package:groove_app/api_service/api_cart.dart';
+import 'package:groove_app/api_service/cart_provider.dart';
+import 'package:groove_app/api_service/shop_service.dart';
+import 'package:groove_app/app/groove_theme_extension.dart';
 import 'package:groove_app/designs/colors.dart';
+import 'package:groove_app/designs/groove_page_styles.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BasketShopPage extends StatefulWidget {
@@ -13,7 +20,6 @@ class BasketShopPage extends StatefulWidget {
 }
 
 class _BasketShopPageState extends State<BasketShopPage> {
-  final Color backBlack = BackBlack;
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -21,6 +27,7 @@ class _BasketShopPageState extends State<BasketShopPage> {
 
   CartDto? cart;
   bool isLoading = true;
+  int? _userId;
 
   @override
   void initState() {
@@ -28,33 +35,52 @@ class _BasketShopPageState extends State<BasketShopPage> {
     _fetchCart();
   }
 
-  void _fetchCart() async {
+  Future<void> _fetchCart() async {
+    setState(() => isLoading = true);
     final prefs = await SharedPreferences.getInstance();
-                        final userId = prefs.getInt('userId');
-                        if (userId == null) {
-                          // Не авторизован
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Ошибка: пользователь не найден'),
-                            ),
-                          );
-                          return;
-                        }
-    final result = await getCart(userId); // Замените 1 на ID пользователя
+    final userId = prefs.getInt('userId');
+    if (userId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ошибка: пользователь не найден')),
+        );
+        setState(() => isLoading = false);
+      }
+      return;
+    }
+
+    _userId = userId;
+    final result = await getCart(userId);
+    if (!mounted) return;
+
     if (result != null) {
+      final items = <int, int>{
+        for (final item in result.items) item.abonementId: item.quantity,
+      };
+      Provider.of<CartProvider>(context, listen: false).syncFromServer(items);
       setState(() {
         cart = result;
-        _nameController.text = result.name + ' ' + result.surname;
+        _nameController.text = '${result.name} ${result.surname}'.trim();
         _emailController.text = result.email;
         _phoneController.text = result.phone;
         isLoading = false;
       });
     } else {
-      // Обработка ошибки
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
+  }
+
+  Future<void> _changeQuantity(CartItemDto item, int delta) async {
+    if (_userId == null) return;
+    final dto = AddToCartDto(userId: _userId!, abonementId: item.abonementId);
+    final ok = delta > 0 ? await addToCart(dto) : await removeFromCart(dto);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось обновить корзину')),
+      );
+      return;
+    }
+    await _fetchCart();
   }
 
   @override
@@ -70,25 +96,18 @@ class _BasketShopPageState extends State<BasketShopPage> {
     return Scaffold(
       appBar: AppBar(
         leading: Padding(
-          padding: const EdgeInsets.only(left: 8.0),
+          padding: EdgeInsets.only(left: 8.0),
           child: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.popAndPushNamed(context, '/shop'),
+            icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
+            onPressed: () => Navigator.popAndPushNamed(context, ClientRoutes.shop),
           ),
         ),
-        title: const Text(
-          'Корзина',
-          style: TextStyle(
-            color: TextWhite,
-            fontSize: 30,
-            fontFamily: 'RubikMonoOne',
-          ),
-        ),
-        backgroundColor: BackBlack,
+        title: Text('Корзина', style: GroovePageStyles.title(context, size: 30)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         centerTitle: true,
       ),
       body: Container(
-        color: BackBlack, // Дополнительно установлен цвет фона для body
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -105,85 +124,66 @@ class _BasketShopPageState extends State<BasketShopPage> {
 
   Widget _buildUserInfoForm() {
     return Card(
-      color: ElementsPurple,
+      color: GroovePageStyles.cardBackground(context),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: Theme.of(context).brightness == Brightness.light
+            ? BorderSide(color: context.groove.border)
+            : BorderSide.none,
+      ),
       margin: const EdgeInsets.all(16),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Ваши данные',
-                style: TextStyle(
-                  color: TextWhite,
-                  fontSize: 20,
-                  fontFamily: 'RubikMonoOne',
-                ),
+                style: GroovePageStyles.title(context, size: 20),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               TextFormField(
                 controller: _nameController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration: InputDecoration(
                   labelText: 'Имя Фамилия',
-                  labelStyle: TextStyle(
-                    color: PicGrey,
-                    fontFamily: 'RubikMonoOne',
-                  ),
+                  labelStyle: GroovePageStyles.muted(context),
                   enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: PicGrey),
+                    borderSide: BorderSide(color: context.groove.border),
                   ),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Пожалуйста, введите имя';
-                  }
-                  return null;
-                },
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Пожалуйста, введите имя' : null,
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               TextFormField(
                 controller: _emailController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration: InputDecoration(
                   labelText: 'Email',
-                  labelStyle: TextStyle(
-                    color: PicGrey,
-                    fontFamily: 'RubikMonoOne',
-                  ),
+                  labelStyle: GroovePageStyles.muted(context),
                   enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: PicGrey),
+                    borderSide: BorderSide(color: context.groove.border),
                   ),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Пожалуйста, введите email';
-                  }
-                  return null;
-                },
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Пожалуйста, введите email' : null,
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               TextFormField(
                 controller: _phoneController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration: InputDecoration(
                   labelText: 'Номер телефона',
-                  labelStyle: TextStyle(
-                    color: PicGrey,
-                    fontFamily: 'RubikMonoOne',
-                  ),
+                  labelStyle: GroovePageStyles.muted(context),
                   enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: PicGrey),
+                    borderSide: BorderSide(color: context.groove.border),
                   ),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Пожалуйста, введите номер телефона';
-                  }
-                  return null;
-                },
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Пожалуйста, введите номер телефона' : null,
               ),
               const SizedBox(height: 24),
             ],
@@ -195,32 +195,27 @@ class _BasketShopPageState extends State<BasketShopPage> {
 
   Widget _buildCartItemsList() {
     if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator(color: MainPurple)),
+      );
     }
     if (cart == null || cart!.items.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.all(16.0),
-        child: Text(
-          'Корзина пуста.',
-          style: TextStyle(color: Colors.white, fontSize: 16),
-        ),
+        child: Text('Корзина пуста.', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16)),
       );
     }
 
     return Column(
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
               Text(
                 'Ваши товары',
-                style: TextStyle(
-                  color: TextWhite,
-                  fontSize: 20,
-                  fontFamily: 'RubikMonoOne',
-                  fontWeight: FontWeight.bold,
-                ),
+                style: GroovePageStyles.title(context, size: 20),
               ),
             ],
           ),
@@ -229,10 +224,7 @@ class _BasketShopPageState extends State<BasketShopPage> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: cart!.items.length,
-          itemBuilder: (context, index) {
-            final item = cart!.items[index];
-            return _buildCartItemCard(item);
-          },
+          itemBuilder: (context, index) => _buildCartItemCard(cart!.items[index]),
         ),
       ],
     );
@@ -240,31 +232,50 @@ class _BasketShopPageState extends State<BasketShopPage> {
 
   Widget _buildCartItemCard(CartItemDto item) {
     return Card(
-      color: ElementsPurple,
+      color: GroovePageStyles.cardBackground(context),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: Theme.of(context).brightness == Brightness.light
+            ? BorderSide(color: context.groove.border)
+            : BorderSide.none,
+      ),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               item.abonementName,
-              style: const TextStyle(
-                color: TextWhite,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
+            Text(
+              '${item.price} ₽ за ед.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 14),
+            ),
+            SizedBox(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '${item.price} ₽',
-                  style: const TextStyle(color: ProcessYellow, fontSize: 16),
+                IconButton(
+                  onPressed: () => _changeQuantity(item, -1),
+                  icon: Icon(Icons.remove_circle_outline, color: Theme.of(context).colorScheme.onSurface),
                 ),
                 Text(
-                  '${item.price} ₽',
+                  '${item.quantity}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                IconButton(
+                  onPressed: () => _changeQuantity(item, 1),
+                  icon: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.onSurface),
+                ),
+                const Spacer(),
+                Text(
+                  '${item.lineTotal} ₽',
                   style: const TextStyle(
                     color: ProcessYellow,
                     fontSize: 18,
@@ -282,27 +293,18 @@ class _BasketShopPageState extends State<BasketShopPage> {
   Widget _buildTotalSum() {
     final int total = cart?.total ?? 0;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Text(
+          Text(
             'Итого:',
-            style: TextStyle(
-              color: TextWhite,
-              fontSize: 20,
-              fontFamily: 'RubikMonoOne',
-              fontWeight: FontWeight.bold,
-            ),
+            style: GroovePageStyles.title(context, size: 20),
           ),
           Text(
             '$total ₽',
-            style: const TextStyle(
-              color: ProcessYellow,
-              fontSize: 24,
-              fontFamily: 'RubikMonoOne',
-              fontWeight: FontWeight.bold,
-            ),
+            style: GroovePageStyles.body(context, size: 24, color: ProcessYellow)
+                .copyWith(fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -316,51 +318,31 @@ class _BasketShopPageState extends State<BasketShopPage> {
         style: ElevatedButton.styleFrom(
           backgroundColor: ProcessYellow,
           minimumSize: const Size(double.infinity, 50),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         onPressed: () async {
-          if (_formKey.currentState!.validate()) {
-            final prefs = await SharedPreferences.getInstance();
-                        final userId = prefs.getInt('userId');
-                        if (userId == null) {
-                          // Не авторизован
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Ошибка: пользователь не найден'),
-                            ),
-                          );
-                          return;
-                        }
-            final dto = ConfirmPurchaseDto(
-              userId: userId,
-            ); // Заменить 1 на актуальный ID пользователя
-            final success = await confirmPurchase(dto);
+          if (!_formKey.currentState!.validate() || _userId == null) return;
 
-            if (success) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Оплата прошла успешно!'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-              _fetchCart(); // обновим корзину после оплаты
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Ошибка при оплате'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            }
+          final dto = ConfirmPurchaseDto(userId: _userId!);
+          final success = await confirmPurchase(dto);
+
+          if (!mounted) return;
+          if (success) {
+            Provider.of<CartProvider>(context, listen: false).clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Оплата прошла успешно!'), duration: Duration(seconds: 2)),
+            );
+            await _fetchCart();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Ошибка при оплате'), duration: Duration(seconds: 2)),
+            );
           }
         },
-        child: const Text(
+        child: Text(
           'ОПЛАТИТЬ',
-          style: TextStyle(
-            color: TextWhite,
-            fontSize: 18,
+          style: GroovePageStyles.body(context, size: 18).copyWith(
+            color: Colors.black,
             fontWeight: FontWeight.bold,
           ),
         ),

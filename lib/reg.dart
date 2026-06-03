@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:groove_app/designs/colors.dart';
+import 'package:groove_app/widgets/groove_logo.dart';
 import 'package:groove_app/api_DTOs/register_dto.dart';
 import 'package:groove_app/api_service/api_requests.dart';
-import 'package:groove_app/auth.dart';
+import 'package:groove_app/client_routes.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 class RegPage extends StatefulWidget {
@@ -15,15 +19,24 @@ class _RegPageState extends State<RegPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _familiaController = TextEditingController();
+  final _patronymicController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  DateTime? _dateOfBirth;
+
+  @override
+  void initState() {
+    super.initState();
+    initializeDateFormatting('ru', null);
+  }
 
   @override
   void dispose() {
     _nameController.dispose();
     _familiaController.dispose();
+    _patronymicController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
@@ -33,47 +46,81 @@ class _RegPageState extends State<RegPage> {
 
   String result = "";
 
-  void _submit() async {
-    try {
-      if (_formKey.currentState!.validate()) {
-        final emailExists = await checkEmailExists(_emailController.text);
-        if (emailExists) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Email уже зарегистрирован")),
-          );
-          return;
-        }
-        final user = RegisterDto(
-          nameuser: _nameController.text,
-          familiauser: _familiaController.text,
-          email: _emailController.text,
-          phone: _phoneController.text,
-          password: _passwordController.text,
+  Future<void> _pickDateOfBirth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateOfBirth ?? DateTime(2000),
+      firstDate: DateTime(1950),
+      lastDate: DateTime.now(),
+      locale: const Locale('ru'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: MainPurple,
+              onPrimary: Colors.white,
+              surface: Theme.of(context).cardColor,
+              onSurface: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          child: child!,
         );
+      },
+    );
+    if (picked != null) {
+      setState(() => _dateOfBirth = picked);
+    }
+  }
 
-        final response = await registerUser(user);
-
-        if (response == "Регистрация успешна") {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Регистрация прошла успешно")),
-          );
-
-          await Future.delayed(const Duration(seconds: 1));
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const AuthPage()),
-          );
-        } else {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(response)));
-        }
-      }
-    } catch (e, stack) {
-      print("Ошибка при регистрации: $e");
-      print("Stacktrace: $stack");
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_dateOfBirth == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Произошла ошибка при регистрации")),
+        const SnackBar(content: Text('Выберите дату рождения')),
+      );
+      return;
+    }
+
+    try {
+      final emailExists = await checkEmailExists(_emailController.text);
+      if (!mounted) return;
+      if (emailExists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Email уже зарегистрирован')),
+        );
+        return;
+      }
+
+      final user = RegisterDto(
+        nameuser: _nameController.text.trim(),
+        familiauser: _familiaController.text.trim(),
+        patronymic: _patronymicController.text.trim(),
+        dateOfBirth: _dateOfBirth!,
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      final response = await registerUser(user);
+      if (!mounted) return;
+
+      if (response == 'Регистрация успешна') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Регистрация прошла успешно')),
+        );
+        Navigator.pushReplacementNamed(context, ClientRoutes.auth);
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response)),
+      );
+    } catch (e, stack) {
+      debugPrint('Ошибка при регистрации: $e');
+      debugPrint('Stacktrace: $stack');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Произошла ошибка при регистрации')),
       );
     }
   }
@@ -93,8 +140,7 @@ class _RegPageState extends State<RegPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(
-                  "images/Logo_Groove.png",
+                GrooveLogo(
                   height: MediaQuery.of(context).size.height * 0.2,
                   width: MediaQuery.of(context).size.width * 0.7,
                 ),
@@ -103,8 +149,8 @@ class _RegPageState extends State<RegPage> {
                   child: TextFormField(
                     controller: _nameController,
                     validator: (value) => value!.isEmpty ? "Введите имя" : null,
-                    style: TextStyle(color: Colors.white),
-                    cursorColor: Colors.white,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
                     decoration: InputDecoration(
                       labelText: 'Имя',
                       labelStyle: TextStyle(color: Colors.grey),
@@ -129,8 +175,8 @@ class _RegPageState extends State<RegPage> {
                     controller: _familiaController,
                     validator:
                         (value) => value!.isEmpty ? "Введите фамилию" : null,
-                    style: TextStyle(color: Colors.white),
-                    cursorColor: Colors.white,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
                     decoration: InputDecoration(
                       labelText: 'Фамилия',
                       labelStyle: TextStyle(color: Colors.grey),
@@ -152,13 +198,73 @@ class _RegPageState extends State<RegPage> {
                 SizedBox(
                   width: MediaQuery.of(context).size.width * 0.85,
                   child: TextFormField(
+                    controller: _patronymicController,
+                    validator: (value) => value!.isEmpty ? 'Введите отчество' : null,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
+                    decoration: InputDecoration(
+                      labelText: 'Отчество',
+                      labelStyle: TextStyle(color: Colors.grey),
+                      prefixIcon: Icon(Icons.person, color: Colors.grey),
+                      filled: true,
+                      fillColor: Color(0xCC643C70),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(25),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(25),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+                SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.85,
+                  child: InkWell(
+                    onTap: _pickDateOfBirth,
+                    borderRadius: BorderRadius.circular(25),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Дата рождения',
+                        labelStyle: const TextStyle(color: Colors.grey),
+                        prefixIcon: const Icon(Icons.calendar_today, color: Colors.grey),
+                        filled: true,
+                        fillColor: const Color(0xCC643C70),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(25),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(25),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      child: Text(
+                        _dateOfBirth != null
+                            ? DateFormat('d MMMM yyyy', 'ru').format(_dateOfBirth!)
+                            : 'Нажмите, чтобы выбрать',
+                        style: TextStyle(
+                          color: _dateOfBirth != null
+                              ? Theme.of(context).colorScheme.onSurface
+                              : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+                SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.85,
+                  child: TextFormField(
                     controller: _phoneController,
                     inputFormatters: [phoneFormatter],
                     keyboardType: TextInputType.phone,
                     validator:
                         (value) => value!.isEmpty ? "Введите телефон" : null,
-                    style: TextStyle(color: Colors.white),
-                    cursorColor: Colors.white,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
                     decoration: InputDecoration(
                       labelText: 'Номер телефона',
                       labelStyle: TextStyle(color: Colors.grey),
@@ -185,11 +291,11 @@ class _RegPageState extends State<RegPage> {
                     validator:
                         (value) =>
                             !value!.contains('@') ? "Неверный email" : null,
-                    style: TextStyle(color: Colors.white),
-                    cursorColor: Colors.white,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
                     decoration: InputDecoration(
                       labelText: 'Email',
-                      hintText: "example@email.com",
+                      hintText: 'example@mail.ru',
                       hintStyle: TextStyle(color: Colors.grey),
                       labelStyle: TextStyle(color: Colors.grey),
                       prefixIcon: Icon(Icons.email, color: Colors.grey),
@@ -214,8 +320,8 @@ class _RegPageState extends State<RegPage> {
                     validator:
                         (value) => value!.length < 6 ? "Мин. 6 символов" : null,
                     obscureText: true,
-                    style: TextStyle(color: Colors.white),
-                    cursorColor: Colors.white,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
                     decoration: InputDecoration(
                       labelText: 'Пароль',
                       labelStyle: TextStyle(color: Colors.grey),
@@ -248,8 +354,8 @@ class _RegPageState extends State<RegPage> {
                       return null;
                     },
                     obscureText: true,
-                    style: TextStyle(color: Colors.white),
-                    cursorColor: Colors.white,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                    cursorColor: Theme.of(context).colorScheme.onSurface,
                     decoration: InputDecoration(
                       labelText: 'Повторите пароль',
                       labelStyle: TextStyle(color: Colors.grey),
@@ -319,7 +425,7 @@ class _RegPageState extends State<RegPage> {
                   width: MediaQuery.of(context).size.width * 0.55,
                   child: OutlinedButton(
                     onPressed: () {
-                      Navigator.popAndPushNamed(context, '/');
+                      Navigator.popAndPushNamed(context, ClientRoutes.auth);
                     },
                     child: ShaderMask(
                       shaderCallback: (Rect bounds) {
@@ -329,7 +435,7 @@ class _RegPageState extends State<RegPage> {
                       },
                       child: Text(
                         "Войти",
-                        style: TextStyle(color: Colors.white),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                       ),
                     ),
                   ),

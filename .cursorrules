@@ -1,0 +1,177 @@
+# Groove — Flutter Client (groove_app)
+
+## Домен
+Система управления танцевальной студией. Роли: **Client**, **Trainer**, **Admin**. Клиенты и тренеры — mobile (Android/iOS); администраторы — desktop (Windows/macOS/Linux).
+
+Backend API: репозиторий `c:\Users\gaifu\source\repos\APIGroove`, проект `APIGroove/`. Не спрашивай каждый раз, что за проект — считай этот контекст данностью.
+
+**Тренеры в БД:** отдельной таблицы `Trainers` нет — только `Users` с `Role = Trainer`. В JSON API поле `id_trainer` = `Id_user` тренера; в клиенте `trainerId` / `id_trainer` — тот же смысл.
+
+## Стек
+- Flutter **3.27+**, Dart **3.7+** (`sdk: ^3.7.0`)
+- `http`, `provider`, `shared_preferences`, `image_picker`, `intl`, `flutter_html`, `mask_text_input_formatter`
+- Один репозиторий, **два flavor** (см. ниже) — не три отдельных приложения
+
+## Flavors (сборки)
+| Flavor | Точка входа | Платформы | Роли |
+|--------|-------------|-----------|------|
+| `mobile` | `lib/main_mobile.dart` | Android, iOS | Client, Trainer |
+| `admin` | `lib/main_admin.dart` | Windows, macOS, Linux | Admin |
+
+- `lib/main.dart` — реэкспорт `main_mobile.dart` (по умолчанию mobile)
+- `lib/app/app_flavor.dart` — `AppScope.flavor` (`AppFlavor.admin` / `mobile`)
+- `lib/app/groove_app.dart` — общий `MaterialApp` + маршруты по flavor
+- `lib/app/groove_theme.dart` — тема и локализация `ru`
+- Android: `productFlavors` `mobile` / `admin` в `android/app/build.gradle.kts`
+- Команды и примеры: `FLAVORS.md`
+
+```bash
+flutter run -t lib/main_mobile.dart --flavor mobile
+flutter run -t lib/main_admin.dart --flavor admin -d windows
+```
+
+## Структура lib/
+```
+lib/
+├── main.dart, main_mobile.dart, main_admin.dart
+├── app/                      # AppScope, GrooveApp, GrooveTheme, ThemeNotifier, GrooveColors
+├── designs/groove_page_styles.dart  # cardBackground, title/body/muted (RubikMonoOne)
+├── widgets/groove_logo.dart, theme_mode_switch.dart
+├── routes/
+│   ├── mobile_routes.dart    # MobileRoutes, mobileRoutes, mobileOnGenerateRoute
+│   └── admin_routes.dart     # AdminRoutes, adminRoutes
+├── client_routes.dart        # @Deprecated: алиас MobileRoutes (совместимость)
+├── *.dart                    # плоские экраны клиента (auth, home, arenda, schedule…)
+├── rental_slot_selection_screen.dart
+├── api_service/
+│   ├── mobile_auth_api.dart  # hasClientSession, hasTrainerSession, clearMobileSession
+│   ├── hall_rental_service.dart
+│   ├── admin_api.dart, admin_auth_api.dart, admin_schedule_week_api.dart
+│   └── trainer_auth_api.dart # реэкспорт mobile_auth_api + @Deprecated clearTrainerSession
+├── api_DTOs/                 # hall_rental_dto.dart, user_dto (role, trainerId)…
+├── helper/
+│   ├── mobile_auth_navigation.dart, mobile_role_resolver.dart, user_role.dart
+│   ├── rental_week.dart, studio slots (StudioSlots)
+│   └── jwt_helper.dart, admin_http.dart
+├── config/api_config.dart
+├── designs/colors.dart
+├── features/admin/           # AdminScaffold, tabs (в т.ч. admin_rentals_tab)
+└── features/trainer/         # TrainerShell, schedule, profile
+```
+
+## Архитектурный паттерн
+**Плоские экраны + функциональный API-слой** — не Clean Architecture.
+
+- State: `provider` только для корзины (`CartProvider`); остальное — `StatefulWidget` + `setState`
+- Routing: именованные маршруты в `mobileRoutes` / `adminRoutes`; аргументы (напр. `/rec2`) — `mobileOnGenerateRoute`
+- HTTP: пакет `http` — **не** Dio/retrofit без запроса
+- Не вводи Bloc/Riverpod/GetX без явного запроса
+
+## Навигация и автовход (mobile)
+
+**Экран входа:** `AuthPage` (`MobileRoutes.auth`).
+
+**Автовход при старте** (если есть `jwt_token`):
+1. `hasTrainerSession()` → `pushReplacementNamed(MobileRoutes.trainer)` → `TrainerShell`
+2. иначе `hasClientSession()` → `pushReplacementNamed(MobileRoutes.home)` → `HomePage`
+3. иначе форма логина
+
+После ручного входа: `navigateAfterMobileLogin()` → `resolveMobileRole()` → Client/Trainer/Admin (Admin в mobile отклоняется с подсказкой про десктоп).
+
+**Выход:** `navigateToMobileAuth()` / `clearMobileSession()` — очистка `jwt_token`, `userId`, `trainerId`, `userRole`.
+
+**Admin:** `AdminLoginPage` → `navigateAfterAdminLogin()` → `AdminRoutes.home`; автовход через `hasAdminSession()` в `admin_auth_api.dart`.
+
+### MobileRoutes (основные)
+`/`, `/home`, `/trainer`, `/reg`, `/rec`, `/rec2`, `/profile`, `/schedule`, `/arenda`, `/shop`, `/basket`, `/abonements`, `/purchase`, `/myjournal`, `/myarendalist`
+
+## API и auth
+- Base URL: `lib/config/api_config.dart` → `ApiConfig.baseUrl` (dev: **5255**, см. launchSettings API)
+- Login: тело 200 — **сырой JWT** (`response.body`), ключ `jwt_token` в SharedPreferences
+- Mobile: `Authorization: Bearer` через `getToken()` / `jwt_helper.dart`
+- Admin: `adminAuthHeaders()` в `helper/admin_http.dart`
+- DTO-поля **зеркалят backend**: `id_user`, `name_user`, `familia_user` — не переименовывать без API
+- Роль: нормализация в `helper/user_role.dart` (`Client` | `Trainer` | `Admin`); при сомнении — JWT + `/api/Trainer/me`
+
+### Аренда залов (актуально)
+**Клиент** (`[Authorize(Roles = Client)]`):
+- `GET /api/hall-rentals/available-slots?date=&hallId=` → `{ startTime: "08:30" }` …
+- `POST /api/hall-rentals` — `{ date, startTime, durationHours, hallId? }`, оплата с баланса (600 ₽/час)
+
+**Админ** (`[Authorize(Roles = Admin)]`):
+- `GET /api/admin/hall-rentals?date=&hallId=`
+- `DELETE /api/admin/hall-rentals/{id}?refund=true` — статус `Cancelled`, возврат на баланс
+
+**Клиент UI:** `arenda.dart` (календарь, красные дни без слотов, только текущая+следующая неделя) → `RentalSlotSelectionScreen` (последовательные слоты). Слоты студии: `StudioSlots.times` = 8:30 … 20:10 (как `ScheduleSlotConstants` на API). Зал — `Is_Rentable` (персональный).
+
+**Админ UI:** шапка `AdminScaffold` → «Аренды» → `AdminRentalsTab` (недельный календарь + таблица + отмена).
+
+Старые `/api/arenda/*` на клиенте **не использовать** — заменены на `hall-rentals`.
+
+### Прочие эндпоинты (напоминание)
+- Тренер: `features/trainer/services/trainer_api_service.dart`, `id_trainer` в JSON
+- Admin CRUD: `admin_api.dart`; неделя: `admin_schedule_week_api.dart`
+- Admin Trainer POST/PUT: camelCase — `familiaTrainer`, `nameTrainer`, `typeClassIds`, …
+
+## Папки и нейминг
+- `api_DTOs/` — существующее имя, **не переименовывать** без запроса
+- `api_service/` — top-level `Future`-функции, не классы-сервисы
+- Цвета: `designs/colors.dart` (`BackBlack`, `MainPurple`, `ProcessYellow`, `ElementsPurple`) — **не** как единственный фон карточек; для карточек см. тему ниже
+
+## UI / светлая и тёмная тема
+- Переключение: `lib/app/theme_notifier.dart` (`ThemeNotifier`, `SharedPreferences`), `Provider` в `main_mobile.dart` / `main_admin.dart`
+- Темы: `lib/app/groove_theme.dart` — `buildLightTheme()` / `buildDarkTheme()`; семантика — `lib/app/groove_theme_extension.dart` (`GrooveColors`, `context.groove`)
+- Стили страниц: `lib/designs/groove_page_styles.dart` — `GroovePageStyles.title/body/muted`, **`cardBackground(context)`**, **`cardDecoration(context)`**
+- Логотип по теме: `lib/widgets/groove_logo.dart` — тёмная: `images/Logo_Groove.png`, светлая: `images/Logo_Groove_Dark.png`
+- Переключатель в меню клиента: `ThemeModeSwitch` (`home.dart` боковая панель)
+- Шрифт: **RubikMonoOne** (`GrooveTheme.themeData()`)
+- Светлая тема: scaffold `#F3EDF7`, карточки белые с рамкой `groove.border`; тёмная: scaffold `#151515`, карточки `#2A2A2A` / `ElementsPurple` где уместно
+- **Не хардкодить** `BackBlack` / `Color(0xFF2A2A2A)` для карточек и таблиц — `Theme.of(context)`, `context.groove`, `GroovePageStyles`
+- **Container:** нельзя одновременно `color:` и `decoration:` — только `decoration: BoxDecoration(color: …, …)`
+- **Контакты:** один логотип — `GrooveLogo`; логотип организации из API на экране контактов **не** дублировать (тема подставляет ассет)
+- Админка: `AdminScaffold` (sidebar + header), таблицы — `AdminScrollableTable` (цвета строк/шапки из `GrooveColors`)
+- Отчёты: `ReportScrollableTable` + `reportTableDataStyle(context)` / `reportTableHeadingStyle(context)` в `features/admin/reports/report_widgets.dart` (на светлой теме текст таблиц **тёмный**, `#212121`)
+- Тренер: `LessonTypeTabs` — невыбранная вкладка `context.groove.onSurfaceSecondary`, не `Colors.white70`; `TrainerShell` — нижняя панель фиолетовая, невыбранные иконки — белые с прозрачностью
+
+## Текущее состояние (актуально)
+
+### Mobile — клиент
+- `schedule.dart` — `ScheduleWeekCalendar`, персональные слоты `trainer-available`
+- `arenda.dart` + `rental_slot_selection_screen.dart` — аренда через `hall_rental_service.dart`
+- Автовход клиента: `hasClientSession()` в `mobile_auth_api.dart`
+
+### Mobile — тренер
+- `TrainerShell`, `TrainerHomeScreen`, `TrainerScheduleEditScreen`, `TrainerProfileScreen`
+- `resolveTrainerUserId()` — `Id_user` тренера; автовход: `hasTrainerSession()`
+
+### Admin (desktop)
+- CRUD: клиенты, абонементы, тренеры, залы, покупки, направления, новости, организация
+- **Отчёты:** `features/admin/reports/` — финансы, тренеры, посещаемость; период — `report_period_filter.dart`; экспорт CSV
+- «Текущие записи» (главная): календарь недели, групповые/персональные таблицы (`GroupAdminTable` / `PersonalAdminTable`)
+- «Расписание» (шапка): `AdminScheduleTab` — validate/publish, чипы типов (Все/Групповые/Персональные), кнопка «Проверить» — текст `colorScheme.onSurface` на светлой теме
+- «Аренды» (шапка): `AdminRentalsTab`
+- `admin_api.dart`: `_parseErrorBody`, `fetchAdminHallRentals`, `cancelAdminHallRental`
+
+### Типичные ошибки Flutter (избегать)
+- `late Future<…> _xFuture` без присвоения в `initState` — инициализировать сразу (`_xFuture = _loadX()`), в `_loadX` при отсутствии `userId` возвращать `[]`, не `return` без `setState`
+- Нижняя навигация (`home.dart`): **не** внутри `SingleChildScrollView` со `Spacer` — фиксированный блок внизу `Column` + `Expanded` для контента; вкладки в `Expanded` + `InkWell` на всю ячейку
+- `ShopPage` / расписание: панель вкладок — `BoxDecoration(color: scaffoldBackgroundColor, border: …)`, не `color` + `decoration` на `Container`
+
+## Согласование с backend
+При изменении DTO синхронизируй с `APIGroove/Requests/` и `Model/`. Миграция аренды: `ArendaHalls.Duration_hours`, `ArendaHalls.Status` (`Active`/`Cancelled`) — `20260522125225_AddArendaHallRentalFields`; при рассинхроне EF history — SQL в `APIGroove/migrations_scripts/`.
+
+## После pull / локальный dev
+1. API: `dotnet ef database update` (или скрипт из `migrations_scripts/` при ошибках history)
+2. `ApiConfig.baseUrl` = порт запущенного API (**5255**)
+3. Mobile: `flutter run -t lib/main_mobile.dart --flavor mobile`
+4. Admin: `flutter run -t lib/main_admin.dart --flavor admin -d windows`
+5. Тестовые пользователи: `Role` в БД = `Client` / `Trainer` / `Admin`; для тренера после миграции перелогин (обновить `trainerId` в prefs)
+
+## Ожидания от AI
+- Учитывай **flavor** (не смешивай admin-экраны в mobile-сборке)
+- При правках UI проверяй **обе темы** (светлую и тёмную); новые экраны — через `Theme.of` / `context.groove` / `GroovePageStyles`
+- Минимальные точечные изменения; без массового рефакторинга и скриптов массовой замены цветов без проверки
+- Зависимости из `pubspec.yaml`; не дублируй стек
+- Android `applicationId`: `com.nail.grooveapp` (admin: суффикс `.admin`)
+- Новые client-экраны вне `features/` — в `mobileRoutes`; admin — в `adminRoutes` и `features/admin/`
+- `ClientRoutes` — `@Deprecated`, предпочитай `MobileRoutes` в новом коде

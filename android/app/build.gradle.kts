@@ -20,14 +20,24 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.nail.grooveapp"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    flavorDimensions += "app"
+    productFlavors {
+        create("mobile") {
+            dimension = "app"
+            resValue("string", "app_name", "Groove")
+        }
+        create("admin") {
+            dimension = "app"
+            applicationIdSuffix = ".admin"
+            resValue("string", "app_name", "Groove Admin")
+        }
     }
 
     buildTypes {

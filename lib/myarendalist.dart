@@ -1,11 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:groove_app/api_DTOs/arendalist_dto.dart';
-import 'package:groove_app/config/api_config.dart';
-import 'package:http/http.dart' as http;
+import 'package:groove_app/api_DTOs/hall_rental_dto.dart';
+import 'package:groove_app/api_service/hall_rental_service.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class MyarendalistPage extends StatefulWidget {
   const MyarendalistPage({super.key});
@@ -15,111 +12,75 @@ class MyarendalistPage extends StatefulWidget {
 }
 
 class _MyarendalistPageState extends State<MyarendalistPage> {
-  DateTime _currentWeek = DateTime.now();
-  List<ArendaListDto> _arendas = [];
-  int? userId; // ← переменная теперь nullable
+  List<MyHallRentalDto> _rentals = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     initializeDateFormatting('ru', null);
-    _loadUserAndFetchArendas();
+    _load();
   }
 
-  Future<void> _loadUserAndFetchArendas() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedUserId = prefs.getInt('userId');
-
-    if (savedUserId == null) {
-      // Обработка случая: пользователь не авторизован
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: пользователь не найден')),
-      );
-      return;
-    }
-
+  Future<void> _load() async {
     setState(() {
-      userId = savedUserId;
+      _loading = true;
+      _error = null;
     });
-
-    _fetchArendas();
-  }
-
-  void _previousWeek() {
-    setState(() {
-      _currentWeek = _currentWeek.subtract(const Duration(days: 7));
-    });
-    _fetchArendas();
-  }
-
-  void _nextWeek() {
-    setState(() {
-      _currentWeek = _currentWeek.add(const Duration(days: 7));
-    });
-    _fetchArendas();
-  }
-
-  String _formatWeekRange(DateTime date) {
-    final start = date;
-    final end = date.add(const Duration(days: 6));
-    return '${start.day} - ${end.day} ${_getMonthName(end.month)}';
-  }
-
-  String _getMonthName(int month) {
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря',
-    ];
-    return months[month - 1];
-  }
-
-  Future<void> _fetchArendas() async {
-    if (userId == null) return;
-
-    final start = _currentWeek.toIso8601String();
-    final end = _currentWeek.add(const Duration(days: 6)).toIso8601String();
-
-    final uri = Uri.parse(
-      '${ApiConfig.baseUrl}/api/arendalist/$userId/filter?weekStart=$start&weekEnd=$end',
-    );
-
-    final response = await http.get(uri);
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
+    try {
+      final data = await fetchMyHallRentals();
+      data.sort((a, b) => b.dateArenda.compareTo(a.dateArenda));
+      if (!mounted) return;
       setState(() {
-        _arendas = data.map((e) => ArendaListDto.fromJson(e)).toList();
+        _rentals = data;
+        _loading = false;
       });
-    } else {
-      print('Ошибка загрузки аренд');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
-  Future<void> _cancelArenda(int arendaId) async {
-    if (userId == null) return;
-
-    final uri = Uri.parse(
-      '${ApiConfig.baseUrl}/api/arendalist/$arendaId/cancel?userId=$userId',
+  Future<void> _cancel(MyHallRentalDto rental) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Отмена аренды', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+        content: Text(
+          'Отменить аренду ${DateFormat('dd.MM.yyyy HH:mm', 'ru').format(rental.startTime)}?\n'
+          'На баланс вернётся ${rental.sum} ₽.',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Нет'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Отменить', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
     );
-    final response = await http.delete(uri);
+    if (confirm != true) return;
 
-    if (response.statusCode == 200) {
+    try {
+      await cancelMyHallRental(rental.id);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Аренда отменена')),
       );
-      _fetchArendas();
-    } else {
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нельзя отменить аренду')),
+        SnackBar(content: Text(e.toString())),
       );
     }
   }
@@ -127,97 +88,135 @@ class _MyarendalistPageState extends State<MyarendalistPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('АРЕНДА', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
-        leading: const BackButton(color: Colors.white),
+        title: Text('Мои аренды', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        leading: BackButton(color: Theme.of(context).colorScheme.onSurface),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onSurface),
+            onPressed: _load,
+          ),
+        ],
       ),
-      body: userId == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      onPressed: _previousWeek,
-                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                    ),
-                    Text(
-                      _formatWeekRange(_currentWeek),
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    IconButton(
-                      onPressed: _nextWeek,
-                      icon: const Icon(Icons.arrow_forward_ios, color: Colors.white),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                if (_arendas.isEmpty)
-                  const Center(
-                    child: Text(
-                      'Нет аренд на этой неделе',
-                      style: TextStyle(color: Colors.white),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFAD03E2)))
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _load,
+                          child: const Text('Повторить'),
+                        ),
+                      ],
                     ),
                   ),
-                ..._arendas.map((arenda) => _buildRentCard(arenda)).toList(),
-              ],
-            ),
+                )
+              : _rentals.isEmpty
+                  ? Center(
+                      child: Text(
+                        'У вас пока нет аренд',
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54), fontSize: 16),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      color: const Color(0xFFAD03E2),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _rentals.length,
+                        itemBuilder: (context, index) =>
+                            _buildRentCard(_rentals[index]),
+                      ),
+                    ),
     );
   }
 
-  Widget _buildRentCard(ArendaListDto arenda) {
+  Widget _buildRentCard(MyHallRentalDto rental) {
     final dateFormat = DateFormat('dd MMMM yyyy HH:mm', 'ru');
+    final isCancelled = rental.isCancelled;
+    final isCompleted = rental.isCompleted;
+    final statusColor = isCancelled || isCompleted
+        ? Colors.white54
+        : Color(0xFFFFCC32);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey),
+        border: Border.all(
+          color: isCancelled || isCompleted ? Colors.white24 : Colors.grey,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Оформлено: ${DateFormat('dd MMMM yyyy', 'ru').format(arenda.dateArenda)}',
-            style: const TextStyle(color: Colors.grey),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                rental.displayStatusLabel,
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                '${rental.sum} ₽',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Text(
-            'Бронь: ${dateFormat.format(arenda.startTime)} - ${DateFormat('HH:mm').format(arenda.endTime)}',
-            style: const TextStyle(color: Colors.white),
+            'Оформлено: ${DateFormat('dd MMMM yyyy', 'ru').format(rental.dateArenda)}',
+            style: TextStyle(color: Colors.grey),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
-            'Длительность: ${arenda.durationHours} час(а)',
-            style: const TextStyle(color: Colors.white),
+            'Начало: ${dateFormat.format(rental.startTime)}',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 4),
           Text(
-            'Зал: ${arenda.hallNumber}',
-            style: const TextStyle(color: Colors.white),
+            'Окончание: ${DateFormat('HH:mm', 'ru').format(rental.endTime)}',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7)),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
-            'Стоимость: ${arenda.sum} руб.',
-            style: const TextStyle(color: Colors.white),
+            'Длительность: ${rental.durationHours} ч',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           ),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: () => _cancelArenda(arenda.idArenda),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purpleAccent,
+          SizedBox(height: 4),
+          Text(
+            'Зал: ${rental.hallNumber ?? '—'}',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
+          if (rental.canCancel) ...[
+            SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _cancel(rental),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+              ),
+              child: Text(
+                'ОТМЕНИТЬ',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
             ),
-            child: const Text(
-              'ОТМЕНИТЬ',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
+          ],
         ],
       ),
     );

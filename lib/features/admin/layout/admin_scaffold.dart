@@ -1,161 +1,199 @@
 import 'package:flutter/material.dart';
+import 'package:groove_app/api_DTOs/user_dto.dart';
+import 'package:groove_app/api_service/admin_auth_api.dart';
+import 'package:groove_app/api_service/api_user.dart';
+import 'package:groove_app/app/groove_theme_extension.dart';
+import 'package:groove_app/designs/colors.dart';
+import 'package:groove_app/helper/admin_auth_navigation.dart';
+import 'package:groove_app/features/admin/widgets/admin_ui_helpers.dart';
+import 'package:groove_app/widgets/theme_mode_switch.dart';
 
-class AdminScaffold extends StatelessWidget {
+class AdminScaffold extends StatefulWidget {
   final Widget child;
+  final int selectedSidebarIndex;
+  final ValueChanged<int> onSidebarSelected;
+  final VoidCallback? onHomeTap;
+  final VoidCallback? onScheduleTap;
+  final VoidCallback? onRentalsTap;
+  final void Function(String reportType)? onReportSelected;
 
-  const AdminScaffold({super.key, required this.child});
+  const AdminScaffold({
+    super.key,
+    required this.child,
+    required this.selectedSidebarIndex,
+    required this.onSidebarSelected,
+    this.onHomeTap,
+    this.onScheduleTap,
+    this.onRentalsTap,
+    this.onReportSelected,
+  });
+
+  @override
+  State<AdminScaffold> createState() => _AdminScaffoldState();
+}
+
+class _AdminScaffoldState extends State<AdminScaffold> {
+  UserDto? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await fetchMyProfile();
+      if (mounted) setState(() => _profile = profile);
+    } catch (_) {}
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    await logoutAdmin();
+    if (!context.mounted) return;
+    await navigateToAdminAuth(context);
+  }
+
+  static const List<String> _sidebarTitles = [
+    'Клиенты',
+    'Абонементы',
+    'Тренеры',
+    'Направления',
+    'Залы',
+    'Покупки',
+    'Новости',
+    'Данные об орг.',
+  ];
+
+  static const List<IconData> _sidebarIcons = [
+    Icons.people,
+    Icons.credit_card,
+    Icons.sports,
+    Icons.music_note,
+    Icons.meeting_room,
+    Icons.shopping_cart,
+    Icons.article,
+    Icons.business,
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF151515),
+    final g = context.groove;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final onSurfaceMuted = g.onSurfaceSecondary;
+    final initials = adminInitials(_profile?.familia_user, _profile?.name_user);
+    final displayName = adminDisplayName(
+      _profile?.familia_user,
+      _profile?.name_user,
+      null,
+    );
 
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         children: [
-          /// HEADER
           Container(
             height: 80,
             padding: const EdgeInsets.symmetric(horizontal: 30),
-
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-
-              border: Border(bottom: BorderSide(color: Color(0xFF2A2A2A))),
+            decoration: BoxDecoration(
+              color: g.headerBackground,
+              border: Border(bottom: BorderSide(color: g.border)),
             ),
-
             child: Row(
               children: [
-                _buildHeaderItem(title: "Главная", onTap: () {}),
-
-                const SizedBox(width: 30),
-
-                /// АРЕНДЫ
-                _buildHeaderItem(title: "Аренды", onTap: () {}),
-
-                const SizedBox(width: 30),
-
-                /// РАСПИСАНИЕ
-                _buildHeaderItem(title: "Расписание", onTap: () {}),
-
-                const SizedBox(width: 30),
-
-                /// ОТЧЕТЫ
+                _buildHeaderItem(title: 'Главная', onTap: widget.onHomeTap ?? () {}),
+                SizedBox(width: 30),
+                _buildHeaderItem(
+                  title: 'Расписание',
+                  onTap: widget.onScheduleTap ?? () {},
+                ),
+                SizedBox(width: 30),
+                _buildHeaderItem(title: 'Аренды', onTap: widget.onRentalsTap ?? () {}),
+                SizedBox(width: 30),
                 PopupMenuButton<String>(
-                  color: const Color(0xFF2A2A2A),
-
+                  color: Theme.of(context).cardColor,
                   offset: const Offset(0, 45),
-
                   child: Row(
-                    children: const [
-                      Text(
-                        "Отчеты",
-
-                        style: TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-
-                      SizedBox(width: 4),
-
-                      Icon(Icons.keyboard_arrow_down, color: Colors.white),
+                    children: [
+                      Text('Отчеты', style: TextStyle(color: onSurface, fontSize: 16)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.keyboard_arrow_down, color: onSurface),
                     ],
                   ),
-
-                  itemBuilder:
-                      (context) => [
-                        const PopupMenuItem(
-                          value: "finance",
-                          child: Text(
-                            "Финансы",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-
-                        const PopupMenuItem(
-                          value: "trainers",
-                          child: Text(
-                            "Тренеры",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-
-                        const PopupMenuItem(
-                          value: "attendance",
-                          child: Text(
-                            "Посещаемость",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ],
-
-                  onSelected: (value) {},
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'finance',
+                      child: Text('Финансы', style: TextStyle(color: onSurface)),
+                    ),
+                    PopupMenuItem(
+                      value: 'trainers',
+                      child: Text('Тренеры', style: TextStyle(color: onSurface)),
+                    ),
+                    PopupMenuItem(
+                      value: 'attendance',
+                      child: Text('Посещаемость', style: TextStyle(color: onSurface)),
+                    ),
+                  ],
+                  onSelected: (value) => widget.onReportSelected?.call(value),
                 ),
+                const Spacer(),
+                ThemeModeSwitch(),
               ],
             ),
           ),
-
-          /// ОСНОВНОЙ КОНТЕНТ
           Expanded(
             child: Row(
               children: [
-                /// SIDEBAR
                 Container(
                   width: 260,
-                  color: const Color(0xFF1B1B1B),
-
+                  color: g.menuPanel,
                   child: Column(
                     children: [
                       const SizedBox(height: 30),
-
-                      /// ПРОФИЛЬ
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
-
                         child: Row(
                           children: [
-                            /// АВАТАР
                             Container(
                               width: 60,
                               height: 60,
-
                               decoration: BoxDecoration(
-                                color: const Color(0xFFAD03E2),
+                                color: MainPurple,
                                 borderRadius: BorderRadius.circular(100),
                               ),
-
-                              child: const Icon(
-                                Icons.person,
-                                color: Colors.white,
-                                size: 32,
+                              alignment: Alignment.center,
+                              child: Text(
+                                initials,
+                                style: TextStyle(
+                                  color: onSurface,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-
                             const SizedBox(width: 15),
-
-                            /// ИНФОРМАЦИЯ
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
-
-                                children: const [
+                                children: [
                                   Text(
-                                    "Администратор",
-
+                                    'Администратор',
                                     style: TextStyle(
-                                      color: Colors.white70,
+                                      color: onSurfaceMuted,
                                       fontSize: 13,
                                     ),
                                   ),
-
-                                  SizedBox(height: 4),
-
+                                  const SizedBox(height: 4),
                                   Text(
-                                    "Иванов И.О.",
-
+                                    displayName,
                                     style: TextStyle(
-                                      color: Colors.white,
+                                      color: onSurface,
                                       fontSize: 17,
                                       fontWeight: FontWeight.bold,
                                     ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -163,64 +201,37 @@ class AdminScaffold extends StatelessWidget {
                           ],
                         ),
                       ),
-
-                      const SizedBox(height: 40),
-
-                      /// ПУНКТЫ МЕНЮ
+                      const SizedBox(height: 20),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _logout(context),
+                          icon: Icon(Icons.logout, size: 18, color: onSurfaceMuted),
+                          label: Text('Выйти', style: TextStyle(color: onSurfaceMuted)),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: g.border),
+                            minimumSize: const Size(double.infinity, 40),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
                       Expanded(
                         child: ListView(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
-
-                          children: [
-                            _buildSidebarItem(
-                              icon: Icons.people,
-                              title: "Клиенты",
-                              selected: true,
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.credit_card,
-                              title: "Абонементы",
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.sports,
-                              title: "Тренеры",
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.music_note,
-                              title: "Направления",
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.meeting_room,
-                              title: "Залы",
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.shopping_cart,
-                              title: "Покупки",
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.article,
-                              title: "Новости",
-                            ),
-
-                            _buildSidebarItem(
-                              icon: Icons.business,
-                              title: "Данные об орг.",
-                            ),
-                          ],
+                          children: List.generate(_sidebarTitles.length, (index) {
+                            return _buildSidebarItem(
+                              icon: _sidebarIcons[index],
+                              title: _sidebarTitles[index],
+                              selected: widget.selectedSidebarIndex == index,
+                              onTap: () => widget.onSidebarSelected(index),
+                            );
+                          }),
                         ),
                       ),
                     ],
                   ),
                 ),
-
-                /// КОНТЕНТ
-                Expanded(child: child),
+                Expanded(child: widget.child),
               ],
             ),
           ),
@@ -229,22 +240,18 @@ class AdminScaffold extends StatelessWidget {
     );
   }
 
-  Widget _buildHeaderItem({
-    required String title,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildHeaderItem({required String title, required VoidCallback onTap}) {
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-
       onTap: onTap,
-
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Text(
           title,
-
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontSize: 16,
+          ),
         ),
       ),
     );
@@ -253,37 +260,31 @@ class AdminScaffold extends StatelessWidget {
   Widget _buildSidebarItem({
     required IconData icon,
     required String title,
-    bool selected = false,
+    required bool selected,
+    required VoidCallback onTap,
   }) {
+    final g = context.groove;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-
       decoration: BoxDecoration(
-        color:
-            selected
-                ? const Color(0xFFAD03E2).withOpacity(0.15)
-                : Colors.transparent,
-
+        color: selected ? MainPurple.withValues(alpha: 0.15) : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
       ),
-
       child: ListTile(
         leading: Icon(
           icon,
-          color: selected ? const Color(0xFFAD03E2) : Colors.white70,
+          color: selected ? MainPurple : g.onSurfaceSecondary,
         ),
-
         title: Text(
           title,
-
           style: TextStyle(
-            color: selected ? Colors.white : Colors.white70,
-
+            color: selected ? onSurface : g.onSurfaceSecondary,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
-
-        onTap: () {},
+        onTap: onTap,
       ),
     );
   }

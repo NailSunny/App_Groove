@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:groove_app/client_routes.dart';
 import 'package:groove_app/api_service/cart_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:groove_app/api_DTOs/addcart_dto.dart';
 import 'package:groove_app/api_DTOs/shop_dto.dart';
+import 'package:groove_app/api_service/api_cart.dart';
 import 'package:groove_app/api_service/shop_service.dart';
 import 'package:groove_app/basket_shop.dart';
+import 'package:groove_app/app/groove_theme_extension.dart';
 import 'package:groove_app/designs/colors.dart';
+import 'package:groove_app/designs/groove_page_styles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ShopPage extends StatefulWidget {
@@ -22,6 +26,21 @@ class _ShopPageState extends State<ShopPage> {
   void initState() {
     super.initState();
     _abonements = fetchAbonements();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncCartFromServer());
+  }
+
+  Future<void> _syncCartFromServer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('userId');
+    if (userId == null || !mounted) return;
+
+    final cartDto = await getCart(userId);
+    if (!mounted || cartDto == null) return;
+
+    final items = <int, int>{
+      for (final item in cartDto.items) item.abonementId: item.quantity,
+    };
+    Provider.of<CartProvider>(context, listen: false).syncFromServer(items);
   }
 
   Future<void> _addToCartAPI(int userId, int abonementId) async {
@@ -55,28 +74,21 @@ class _ShopPageState extends State<ShopPage> {
     return Scaffold(
       appBar: AppBar(
         leading: Padding(
-          padding: const EdgeInsets.only(left: 8.0),
+          padding: EdgeInsets.only(left: 8.0),
           child: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.popAndPushNamed(context, '/home'),
+            icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
+            onPressed: () => Navigator.popAndPushNamed(context, ClientRoutes.home),
           ),
         ),
-        title: const Text(
-          'Магазин',
-          style: TextStyle(
-            color: TextWhite,
-            fontSize: 30,
-            fontFamily: 'RubikMonoOne',
-          ),
-        ),
-        backgroundColor: BackBlack,
+        title: Text('Магазин', style: GroovePageStyles.title(context, size: 30)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         centerTitle: true,
         actions: [
           Stack(
             alignment: Alignment.topRight,
             children: [
               IconButton(
-                icon: const Icon(Icons.shopping_basket, color: Colors.white),
+                icon: Icon(Icons.shopping_basket, color: Theme.of(context).colorScheme.onSurface),
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -91,14 +103,14 @@ class _ShopPageState extends State<ShopPage> {
                   right: 6,
                   top: 6,
                   child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
+                    padding: EdgeInsets.all(4),
+                    decoration: BoxDecoration(
                       color: Colors.red,
                       shape: BoxShape.circle,
                     ),
                     child: Text(
                       '${cartProvider.totalItems}',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12),
                     ),
                   ),
                 ),
@@ -111,7 +123,7 @@ class _ShopPageState extends State<ShopPage> {
           _buildNavigationBar(cartProvider),
           Expanded(
             child: Container(
-              color: BackBlack,
+              color: Theme.of(context).scaffoldBackgroundColor,
               padding: const EdgeInsets.all(16.0),
               child: FutureBuilder<List<Abonement>>(
                 future: _abonements,
@@ -148,11 +160,14 @@ class _ShopPageState extends State<ShopPage> {
   }
 
   Widget _buildNavigationBar(CartProvider cartProvider) {
-    final selectedIndex = cartProvider.selectedIndex;
+    final g = context.groove;
 
     return Container(
       height: 50,
-      color: BackBlack,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(bottom: BorderSide(color: g.border)),
+      ),
       child: Row(
         children: [
           _buildTab("Абонементы", 0, cartProvider),
@@ -163,25 +178,27 @@ class _ShopPageState extends State<ShopPage> {
   }
 
   Widget _buildTab(String title, int index, CartProvider cartProvider) {
+    final g = context.groove;
+    final selected = cartProvider.selectedIndex == index;
+
     return Expanded(
       child: GestureDetector(
         onTap: () => cartProvider.setSelectedIndex(index),
         child: Container(
           decoration: BoxDecoration(
-            border:
-                cartProvider.selectedIndex == index
-                    ? const Border(
-                      bottom: BorderSide(color: ProcessYellow, width: 3),
-                    )
-                    : null,
+            border: selected
+                ? const Border(
+                    bottom: BorderSide(color: ProcessYellow, width: 3),
+                  )
+                : null,
           ),
           alignment: Alignment.center,
           child: Text(
             title,
-            style: TextStyle(
-              color:
-                  cartProvider.selectedIndex == index ? ProcessYellow : PicGrey,
-              fontSize: 16,
+            style: GroovePageStyles.body(
+              context,
+              size: 16,
+              color: selected ? ProcessYellow : g.onSurfaceSecondary,
             ),
           ),
         ),
@@ -203,29 +220,33 @@ class _ShopPageState extends State<ShopPage> {
 
   Widget _buildItemCard(Map<String, dynamic> item, CartProvider cartProvider) {
     final title = item['title'];
-    final count = cartProvider.cart[title] ?? 0;
+    final abonementId = item['id'] as int;
+    final count = cartProvider.quantityFor(abonementId);
 
     return Card(
-      color: ElementsPurple,
+      color: GroovePageStyles.cardBackground(context),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: Theme.of(context).brightness == Brightness.light
+            ? BorderSide(color: context.groove.border)
+            : BorderSide.none,
+      ),
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: TextWhite,
-                fontSize: 18,
-                fontFamily: 'RubicMonoOne',
+              style: GroovePageStyles.body(context, size: 18).copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               item['description'],
-              style: TextStyle(color: PicGrey, fontSize: 14),
+              style: GroovePageStyles.muted(context, size: 14),
             ),
             const SizedBox(height: 16),
             Row(
@@ -233,12 +254,8 @@ class _ShopPageState extends State<ShopPage> {
               children: [
                 Text(
                   item['price'],
-                  style: const TextStyle(
-                    color: ProcessYellow,
-                    fontSize: 20,
-                    fontFamily: 'RubicMonoOne',
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: GroovePageStyles.body(context, size: 20, color: ProcessYellow)
+                      .copyWith(fontWeight: FontWeight.bold),
                 ),
                 count == 0
                     ? ElevatedButton(
@@ -260,14 +277,14 @@ class _ShopPageState extends State<ShopPage> {
                           );
                           return;
                         }
-                        await _addToCartAPI(userId, item['id']);
-                        cartProvider.addItem(title);
+                        await _addToCartAPI(userId, abonementId);
+                        cartProvider.addItem(abonementId);
                       },
-                      child: const Text(
+                      child: Text(
                         'В корзину',
-                        style: TextStyle(
-                          color: TextWhite,
-                          fontFamily: 'RubicMonoOne',
+                        style: GroovePageStyles.body(context).copyWith(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     )
@@ -288,15 +305,15 @@ class _ShopPageState extends State<ShopPage> {
                               );
                               return;
                             }
-                            await _removeFromCartAPI(userId, item['id']);
-                            cartProvider.removeItem(title);
+                            await _removeFromCartAPI(userId, abonementId);
+                            cartProvider.removeItem(abonementId);
                           },
-                          icon: const Icon(Icons.remove, color: TextWhite),
+                          icon: Icon(Icons.remove, color: Theme.of(context).colorScheme.onSurface),
                         ),
                         Text(
                           count.toString(),
-                          style: const TextStyle(
-                            color: TextWhite,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 16,
                           ),
                         ),
@@ -316,9 +333,9 @@ class _ShopPageState extends State<ShopPage> {
                               return;
                             }
                             await _addToCartAPI(userId, item['id']);
-                            cartProvider.addItem(title);
+                            cartProvider.addItem(abonementId);
                           },
-                          icon: const Icon(Icons.add, color: TextWhite),
+                          icon: Icon(Icons.add, color: Theme.of(context).colorScheme.onSurface),
                         ),
                       ],
                     ),

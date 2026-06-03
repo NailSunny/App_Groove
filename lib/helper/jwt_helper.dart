@@ -1,6 +1,3 @@
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:groove_app/helper/auth_token.dart';
 
-Future<String?> getToken() async {
-  final prefs = await SharedPreferences.getInstance();
-  return prefs.getString('jwt_token');
-}
+Future<String?> getToken() => getAuthToken();

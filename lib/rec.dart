@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:groove_app/widgets/groove_logo.dart';
 import 'package:groove_app/config/api_config.dart';
+import 'package:groove_app/client_routes.dart';
 import 'package:http/http.dart' as http;
 
 class RecoveryPage extends StatefulWidget {
@@ -65,7 +67,7 @@ class _RecoveryPageState extends State<RecoveryPage> {
     if (response.statusCode == 200) {
       Navigator.pushNamed(
         context,
-        '/rec2',
+        ClientRoutes.recoveryConfirm,
         arguments: {'email': email, 'code': code},
       );
     } else {
@@ -80,9 +82,9 @@ class _RecoveryPageState extends State<RecoveryPage> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
           onPressed: () {
-            Navigator.popAndPushNamed(context, '/');
+            Navigator.popAndPushNamed(context, ClientRoutes.auth);
           },
         ),
       ),
@@ -92,23 +94,22 @@ class _RecoveryPageState extends State<RecoveryPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                "images/Logo_Groove.png",
+              GrooveLogo(
                 width: MediaQuery.of(context).size.width * 0.7,
               ),
               SizedBox(height: 40),
               TextField(
                 controller: emailController,
-                style: TextStyle(color: Colors.white),
-                cursorColor: Colors.white,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                cursorColor: Theme.of(context).colorScheme.onSurface,
                 decoration: inputDecoration("Email", Icons.email),
               ),
               SizedBox(height: 15),
               if (codeSent)
                 TextField(
                   controller: codeController,
-                  style: TextStyle(color: Colors.white),
-                  cursorColor: Colors.white,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                  cursorColor: Theme.of(context).colorScheme.onSurface,
                   decoration: inputDecoration("Код", Icons.lock),
                 ),
               SizedBox(height: 30),

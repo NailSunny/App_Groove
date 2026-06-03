@@ -23,6 +23,7 @@ Future<UserDto?> fetchUserById(int id) async {
 
 Future<UserDto?> fetchMyProfile() async {
   final token = await getToken();
+  if (token == null || token.isEmpty) return null;
 
   final response = await http.get(
     Uri.parse('${ApiConfig.baseUrl}/api/users/me'),

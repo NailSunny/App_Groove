@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:groove_app/api_DTOs/trainer_dto.dart';
 import 'package:groove_app/api_service/api_trainers.dart';
+import 'package:groove_app/routes/mobile_routes.dart';
+import 'package:groove_app/trainer_detail_screen.dart';
+import 'package:groove_app/widgets/api_network_image.dart';
 
 class TrainerlistPage extends StatefulWidget {
   const TrainerlistPage({super.key});
@@ -18,38 +21,39 @@ class _TrainerlistPageState extends State<TrainerlistPage> {
     _trainersFuture = fetchTrainers();
   }
 
+  void _openTrainer(TrainerDto trainer) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TrainerDetailScreen(trainerId: trainer.id),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.popAndPushNamed(context, '/home'),
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
+          onPressed: () => Navigator.popAndPushNamed(context, MobileRoutes.home),
         ),
-        title: const Text(
-          "Список тренеров",
-          style: TextStyle(color: Colors.white),
-        ),
+        title: Text('Список тренеров', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
       ),
       body: FutureBuilder<List<TrainerDto>>(
         future: _trainersFuture,
         builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            if (snapshot.data!.isEmpty) {
-              return Center(child: Text("Список тренеров пуст"));
-            }
-          }
-
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (snapshot.hasError) {
-            return Center(child: Text("Ошибка: ${snapshot.error}"));
+            return Center(child: Text('Ошибка: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('Список тренеров пуст'));
           }
 
           final trainers = snapshot.data!;
-
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: trainers.length,
@@ -57,10 +61,8 @@ class _TrainerlistPageState extends State<TrainerlistPage> {
             itemBuilder: (context, index) {
               final trainer = trainers[index];
               return CoachCard(
-                name: trainer.name,
-                surname: trainer.surname,
-                style: trainer.information,
-                imageUrl: trainer.photo,
+                trainer: trainer,
+                onTap: () => _openTrainer(trainer),
               );
             },
           );
@@ -71,75 +73,73 @@ class _TrainerlistPageState extends State<TrainerlistPage> {
 }
 
 class CoachCard extends StatelessWidget {
-  final String name;
-  final String surname;
-  final String style;
-  final String imageUrl;
+  final TrainerDto trainer;
+  final VoidCallback onTap;
 
-  const CoachCard({
-    super.key,
-    required this.name,
-    required this.surname,
-    required this.style,
-    required this.imageUrl,
-  });
+  const CoachCard({super.key, required this.trainer, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final directionsText = trainer.directionNames.isEmpty
+        ? 'Направления не указаны'
+        : trainer.directionNames.join(', ');
+
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
       elevation: 5,
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF8E5D9F),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                  image: DecorationImage(
-                    fit: BoxFit.cover,
-                    image:
-                        imageUrl.isNotEmpty
-                            ? NetworkImage(imageUrl)
-                            : const AssetImage("images/default_avatar.png")
-                                as ImageProvider,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF8E5D9F),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                ClipOval(
+                  child: SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: trainer.photo.isNotEmpty
+                        ? ApiNetworkImage(
+                            imageUrl: trainer.photo,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                            cacheKey: 'trainer-list-${trainer.id}',
+                          )
+                        : Image.asset('images/default_avatar.png', fit: BoxFit.cover),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$name $surname',
-                      style: const TextStyle(
-                        color: Color(0xFFFFCC32),
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${trainer.name} ${trainer.surname}'.trim(),
+                        style: const TextStyle(
+                          color: Color(0xFFFFCC32),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      style,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
+                      SizedBox(height: 8),
+                      Text(
+                        directionsText,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 14),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.arrow_forward_ios, color: Colors.white),
-            ],
+                Icon(Icons.arrow_forward_ios, color: Theme.of(context).colorScheme.onSurface),
+              ],
+            ),
           ),
         ),
       ),
